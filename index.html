@@ -1,0 +1,358 @@
+<title>Letterlock</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen safe door — dial log scrolls in the middle, entry tumblers + key plate pinned below */
+:root {
+  --bg: #e6e8ea;
+  --panel: #f4f5f6;
+  --plate: #d3d7db;
+  --line: #b7bec5;
+  --fg: #1d2630;
+  --muted: #5d6874;
+  --brass: #9a6d14;
+  --brass-soft: #f1e2bf;
+  --brass-ink: #ffffff;
+  --out: #a3abb3;
+  --bad: #b3261e;
+  --display: "Bungee", "Impact", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12181e; --panel: #1b232b; --plate: #26313b; --line: #3a4753;
+    --fg: #e4e8ec; --muted: #94a1ad; --brass: #d9a945; --brass-soft: #3b2f17;
+    --brass-ink: #1b1305; --out: #4f5b66; --bad: #f2867d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12181e; --panel: #1b232b; --plate: #26313b; --line: #3a4753;
+  --fg: #e4e8ec; --muted: #94a1ad; --brass: #d9a945; --brass-soft: #3b2f17;
+  --brass-ink: #1b1305; --out: #4f5b66; --bad: #f2867d; color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+*, *::before, *::after { box-sizing: border-box; }
+.app {
+  height: 100%; max-width: 520px; margin: 0 auto;
+  display: grid; grid-template-rows: auto 1fr auto auto; gap: 12px; padding-block: 14px 12px;
+}
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: 1.6rem; letter-spacing: .02em; margin: 0; color: var(--fg); }
+h1 span { color: var(--brass); }
+.hdr-actions { display: flex; gap: 8px; }
+.btn {
+  font: 600 .8rem/1 var(--body); letter-spacing: .06em; text-transform: uppercase;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 9px 12px; cursor: pointer;
+}
+.btn:hover { border-color: var(--brass); }
+.btn.primary { background: var(--brass); color: var(--brass-ink); border-color: var(--brass); }
+button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.status { display: flex; justify-content: space-between; align-items: baseline; font-size: .8rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.status b { color: var(--fg); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Guess log */
+.log {
+  min-height: 0; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.log-empty { margin: auto; text-align: center; color: var(--muted); max-width: 32ch; line-height: 1.5; font-size: .9rem; }
+.row { display: grid; grid-template-columns: 1.6rem 1fr auto; align-items: center; gap: 10px; }
+.row .n { font-family: var(--mono); color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; text-align: right; }
+.letters { display: flex; gap: 4px; }
+.lt {
+  width: 2.1rem; height: 2.1rem; display: grid; place-items: center; border-radius: 5px;
+  font: 700 1.05rem var(--mono); background: var(--plate); color: var(--fg); border: 1px solid transparent;
+  cursor: pointer; user-select: none; padding: 0; position: relative;
+}
+.lt.out { color: var(--out); background: transparent; border-color: var(--line); }
+.lt.out::after { content: ""; position: absolute; left: 18%; right: 18%; top: 50%; height: 2px; background: var(--out); transform: rotate(-20deg); }
+.lt.in { background: var(--brass-soft); border-color: var(--brass); color: var(--fg); }
+.pins { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+.pin-group { display: flex; align-items: center; gap: 4px; }
+.pin { width: 12px; height: 12px; border-radius: 50%; }
+.pin.set { background: var(--brass); }
+.pin.loose { border: 2px solid var(--brass); }
+.pin.none { border: 1px dashed var(--line); }
+.row.win .lt { background: var(--brass); color: var(--brass-ink); border-color: var(--brass); }
+.row.win .lt::after { display: none; }
+
+/* Entry */
+.entry { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.tumblers { display: flex; gap: 6px; }
+.tm {
+  width: 3.1rem; height: 3.5rem; display: grid; place-items: center; border-radius: 8px;
+  font: 700 1.7rem var(--mono); background: var(--panel); border: 2px solid var(--line); color: var(--fg);
+}
+.tm.filled { border-color: var(--brass); }
+.tumblers.shake { animation: shake .35s; }
+@keyframes shake { 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+.msg { min-height: 1.3em; font-size: .85rem; color: var(--muted); text-align: center; }
+.msg.err { color: var(--bad); }
+
+/* Keyboard */
+.kb { display: flex; flex-direction: column; gap: 6px; }
+.kb-row { display: flex; gap: 5px; justify-content: center; }
+.key {
+  flex: 1 1 0; max-width: 2.9rem; height: 3.1rem; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--plate); color: var(--fg); font: 700 .95rem var(--mono); cursor: pointer; padding: 0; position: relative;
+}
+.key.wide { max-width: 4.4rem; flex-grow: 1.6; font: 600 .7rem var(--body); letter-spacing: .06em; text-transform: uppercase; }
+.key.out { color: var(--out); background: transparent; }
+.key.in { background: var(--brass-soft); border-color: var(--brass); }
+.kb-hint { text-align: center; font-size: .75rem; color: var(--muted); }
+
+/* Overlay panels */
+.sheet-wrap { position: fixed; inset: 0; background: color-mix(in srgb, var(--bg) 70%, transparent); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.sheet {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-width: 420px; width: 100%;
+  padding: 22px; display: flex; flex-direction: column; gap: 12px; line-height: 1.5; max-height: 100%; overflow-y: auto;
+}
+.sheet h2 { font-family: var(--display); font-weight: 400; font-size: 1.3rem; margin: 0; text-wrap: balance; }
+.sheet p { margin: 0; }
+.sheet .legend { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; font-size: .9rem; }
+.answer { font: 700 2rem var(--mono); letter-spacing: .3em; color: var(--brass); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.stats div { background: var(--plate); border-radius: 8px; padding: 10px 4px; }
+.stats b { display: block; font: 700 1.4rem var(--mono); font-variant-numeric: tabular-nums; }
+.stats span { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.sheet .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+@media (max-width: 400px) {
+  .lt { width: 1.8rem; height: 1.8rem; font-size: .95rem; }
+  .tm { width: 2.8rem; height: 3.2rem; }
+  .row { gap: 6px; }
+  .pins { gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .tumblers.shake { animation: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Letter<span>lock</span></h1>
+    <div class="hdr-actions">
+      <button class="btn" id="helpBtn" type="button">How to play</button>
+      <button class="btn primary" id="newBtn" type="button">New lock</button>
+    </div>
+  </header>
+  <div class="log" id="log" aria-live="polite"></div>
+  <div class="entry">
+    <div class="status" style="width:100%"><span>Tries left <b id="left">10</b></span><span>Opened <b id="streak">0</b> in a row</span></div>
+    <div class="tumblers" id="tumblers"></div>
+    <div class="msg" id="msg"></div>
+  </div>
+  <div>
+    <div class="kb" id="kb"></div>
+    <div class="kb-hint">Tap any letter in your past guesses to mark it out or in.</div>
+  </div>
+</div>
+
+<div class="sheet-wrap" id="sheetWrap" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+</div>
+
+<script>
+const WORDS = [...new Set(`about above abuse actor acute admit adopt adult after again agent agree ahead alarm album alert alike alive allow alone along alter amber among angel anger angle angry apart apple apply arena argue arise armor array arrow aside asset audio audit avoid awake award aware badge baker basic basin batch beach beard beast begin being below bench berry birth black blade blame blank blast blaze bleak blend bless blind block blood bloom board boast bonus boost booth bound brain brand brass brave bread break breed brick bride brief bring broad broke brook brown brush build built bunch burst cabin cable camel canal candy canoe cargo carry carve catch cause cedar chain chair chalk charm chart chase cheap check cheek chess chest chief child chill choir chord civic civil claim clamp clash class clean clear clerk click cliff climb clock close cloth cloud clown coach coast cobra comet coral couch count court cover crack craft crane crash crate crawl crazy cream creek crest crime crisp crowd crown crude crumb crush curve cycle daily dairy daisy dance dealt death debut decay delay delta dense depth diary digit diner dirty disco ditch dizzy dodge doing donor doubt dough draft drain drama drank dream dress dried drift drill drink drive drove dwarf eager eagle early earth easel eaten eight elbow elder elect elite ember empty enemy enjoy enter entry equal error essay event every exact exist extra fable faint faith false fancy feast fence ferry fetch fever fiber field fifth fifty fight final flame flash fleet flesh flick fling float flock flood floor flora flour fluid flute focus foggy force forge forth forty forum found frame fresh front frost fruit fully funny gauge ghost giant given glass gleam glide globe gloom glory glove grace grade grain grand grant grape graph grasp grass grave great greed green greet grief grill grind groan groom gross group grove grown guard guess guest guide guild habit happy harsh hasty haunt heart heavy hedge hello hence heron hinge hobby honey honor horse hotel hound house hover human humor hurry ideal image index inner input irony issue ivory jelly jewel joint jolly judge juice jumbo kayak knife knock known label labor lance large laser later laugh layer learn lease least leave ledge legal lemon level lever light limit linen liver lobby local lodge logic loose lover lower loyal lucky lunar lunch magic major maker mango manor maple march marsh match mayor medal media melon mercy merit metal meter might minor mirth model moist money month moral motor mound mount mouse mouth movie muddy music naive nerve never newly niece night noble noise north notch novel nurse nylon oasis occur ocean offer often olive onion opera orbit order organ other otter ought ounce outer owner oxide ozone paint panel panic paper party pasta patch pause peace peach pearl pedal penny perch phase phone photo piano piece pilot pinch pitch pixel pizza place plain plane plant plate plaza plead pluck plumb plume point polar porch pound power press price pride prime print prior prize probe prone proof proud prove prune pulse punch pupil purse queen query quest quick quiet quilt quota quote radar radio raise rally ranch range rapid raven reach react ready realm rebel refer reign relax relay renew reply rhyme ridge rifle right rigid rival river roast robin robot rocky rough round route royal rugby ruler rural rusty saint salad salon sauce scale scare scarf scene scent scoop scope score scout scrap screw seize sense serve seven shade shake shall shape share shark sharp shave sheep sheet shelf shell shift shine shirt shock shore short shout shrub sight silly since sixth skate skill skirt skull slate sleep slice slide slope smart smile smoke snack snake sneak solar solid solve sound south space spade spare spark speak spear speed spell spend spice spine spoke spoon sport spray squad stack staff stage stair stake stale stamp stand stark start state steak steam steel steep steer stern stick still sting stock stone stood stool storm story stove strap straw strip stuck study stuff style sugar suite sunny super surge swamp swear sweat sweep sweet swift swing sword table taken taste teach teeth tempo tenth thank theme thick thief thing think third thorn those three threw throw thumb tiger tight timer tired title toast today token tooth topic torch total touch tough tower toxic trace track trade trail train trait tramp trash treat trend trial tribe trick tried troop trout truck truly trunk trust truth tulip tutor twice twist ultra uncle under union unity until upper upset urban usage usual valid value valve vapor vault venue verse video vigor vinyl viola viral visit vital vivid vocal voice voter wagon waist waste watch water weary weave wedge weigh weird whale wheat wheel where which while whisk white whole whose widen width witch woman world worry worth would wound woven wrath wreck wrist write wrong yacht yearn yeast yield young youth zebra`
+  .split(/\s+/).filter(w => /^[a-z]{5}$/.test(w)))];
+const DICT = new Set(WORDS);
+const LEN = 5, TRIES = 10;
+const $ = id => document.getElementById(id);
+
+function store(key, val) {
+  try {
+    if (val === undefined) return JSON.parse(localStorage.getItem(key) || "null");
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (e) { return null; }
+}
+
+let S;
+let stats = store("letterlock-stats") || { played: 0, opened: 0, streak: 0 };
+
+function freshState() {
+  return { answer: WORDS[Math.floor(Math.random() * WORDS.length)], guesses: [], current: "", marks: {}, status: "play" };
+}
+
+// Score a guess: "set" = right letter, right slot; "loose" = in the word but another slot.
+function score(guess, answer) {
+  let set = 0;
+  const cg = {}, ca = {};
+  for (let i = 0; i < LEN; i++) {
+    if (guess[i] === answer[i]) set++;
+    cg[guess[i]] = (cg[guess[i]] || 0) + 1;
+    ca[answer[i]] = (ca[answer[i]] || 0) + 1;
+  }
+  let common = 0;
+  for (const ch in cg) common += Math.min(cg[ch], ca[ch] || 0);
+  return { set, loose: common - set };
+}
+
+function cycleMark(ch) {
+  const m = S.marks[ch];
+  S.marks[ch] = m === undefined ? "out" : m === "out" ? "in" : undefined;
+  if (S.marks[ch] === undefined) delete S.marks[ch];
+  render();
+}
+
+function setMsg(text, err) {
+  const m = $("msg"); m.textContent = text || ""; m.classList.toggle("err", !!err);
+}
+
+function submit() {
+  if (S.status !== "play") return;
+  const g = S.current;
+  const t = $("tumblers");
+  if (g.length < LEN || !DICT.has(g)) {
+    setMsg(g.length < LEN ? "Fill all five tumblers first." : `"${g.toUpperCase()}" isn't in the word list. Try another word.`, true);
+    t.classList.remove("shake"); void t.offsetWidth; t.classList.add("shake");
+    return;
+  }
+  if (S.guesses.some(x => x.word === g)) { setMsg("You already tried that word.", true); return; }
+  const r = score(g, S.answer);
+  S.guesses.push({ word: g, ...r });
+  S.current = "";
+  setMsg("");
+  if (r.set === LEN) finish(true);
+  else if (S.guesses.length >= TRIES) finish(false);
+  render();
+  const log = $("log"); log.scrollTop = log.scrollHeight;
+}
+
+function finish(won) {
+  S.status = won ? "won" : "lost";
+  stats.played++;
+  if (won) { stats.opened++; stats.streak++; } else stats.streak = 0;
+  store("letterlock-stats", stats);
+  setTimeout(showEnd, 500);
+}
+
+function type(k) {
+  if ($("sheetWrap").hidden === false) return;
+  if (S.status !== "play") return;
+  if (k === "enter") return submit();
+  if (k === "back") S.current = S.current.slice(0, -1);
+  else if (/^[a-z]$/.test(k) && S.current.length < LEN) S.current += k;
+  setMsg("");
+  render();
+}
+
+function pinsHTML(g) {
+  const set = Array.from({ length: g.set }, () => '<i class="pin set"></i>').join("");
+  const loose = Array.from({ length: g.loose }, () => '<i class="pin loose"></i>').join("");
+  const none = g.set + g.loose === 0 ? '<i class="pin none"></i>' : "";
+  return `<span class="pin-group" title="${g.set} set, ${g.loose} loose">${set}${loose}${none}</span><span>${g.set}·${g.loose}</span>`;
+}
+
+function render() {
+  const log = $("log");
+  if (!S.guesses.length) {
+    log.innerHTML = `<p class="log-empty">A five-letter word is locked away. Each guess tells you <b>how many</b> letters landed, but never which ones. Type a word to begin.</p>`;
+  } else {
+    log.innerHTML = S.guesses.map((g, i) => `
+      <div class="row${g.set === LEN ? " win" : ""}">
+        <span class="n">${i + 1}</span>
+        <span class="letters">${[...g.word].map(ch =>
+          `<button type="button" class="lt ${S.marks[ch] || ""}" data-ch="${ch}" aria-label="${ch.toUpperCase()}${S.marks[ch] ? ", marked " + S.marks[ch] : ""}">${ch.toUpperCase()}</button>`).join("")}</span>
+        <span class="pins">${pinsHTML(g)}</span>
+      </div>`).join("");
+  }
+  $("tumblers").innerHTML = Array.from({ length: LEN }, (_, i) => {
+    const ch = S.current[i] || "";
+    return `<div class="tm${ch ? " filled" : ""}">${ch.toUpperCase()}</div>`;
+  }).join("");
+  document.querySelectorAll(".key[data-k]").forEach(b => {
+    const k = b.dataset.k;
+    b.classList.toggle("out", S.marks[k] === "out");
+    b.classList.toggle("in", S.marks[k] === "in");
+  });
+  $("left").textContent = TRIES - S.guesses.length;
+  $("streak").textContent = stats.streak;
+}
+
+function buildKeyboard() {
+  const rows = ["qwertyuiop", "asdfghjkl", "+zxcvbnm-"];
+  $("kb").innerHTML = rows.map(r => `<div class="kb-row">${[...r].map(c =>
+    c === "+" ? `<button type="button" class="key wide" data-act="enter">Try</button>` :
+    c === "-" ? `<button type="button" class="key wide" data-act="back" aria-label="Delete">Del</button>` :
+    `<button type="button" class="key" data-k="${c}">${c.toUpperCase()}</button>`).join("")}</div>`).join("");
+}
+
+function openSheet(html) { $("sheet").innerHTML = html; $("sheetWrap").hidden = false; $("sheet").querySelector("button")?.focus(); }
+function closeSheet() { $("sheetWrap").hidden = true; }
+
+function statsHTML() {
+  const rate = stats.played ? Math.round(stats.opened / stats.played * 100) : 0;
+  return `<div class="stats"><div><b>${stats.played}</b><span>Played</span></div><div><b>${rate}%</b><span>Opened</span></div><div><b>${stats.streak}</b><span>Streak</span></div></div>`;
+}
+
+function showEnd() {
+  const won = S.status === "won";
+  openSheet(`
+    <h2>${won ? `Opened in ${S.guesses.length} ${S.guesses.length === 1 ? "try" : "tries"}` : "The lock held"}</h2>
+    <p>${won ? "The combination was" : "The word was"}</p>
+    <div class="answer">${S.answer.toUpperCase()}</div>
+    ${statsHTML()}
+    <div class="actions"><button class="btn" type="button" data-close>Look at the board</button><button class="btn primary" type="button" data-new>New lock</button></div>`);
+}
+
+function showHelp() {
+  openSheet(`
+    <h2>How to play</h2>
+    <p>Find the hidden five-letter word in ${TRIES} tries. After each guess you get two counts, and you have to work out which letters they refer to.</p>
+    <div class="legend">
+      <span class="pin-group"><i class="pin set"></i></span><span><b>Set pin</b>: a letter in the right slot.</span>
+      <span class="pin-group"><i class="pin loose"></i></span><span><b>Loose pin</b>: a letter in the word, but in a different slot.</span>
+      <span class="pin-group"><i class="pin none"></i></span><span>No pins: none of these letters are in the word.</span>
+    </div>
+    <p>Repeated letters only count as often as they appear in the hidden word.</p>
+    <p>Tap a letter in your guess history to mark it: once to rule it <b>out</b>, twice to mark it <b>in</b>, three times to clear. The keyboard shows your marks.</p>
+    <div class="actions"><button class="btn primary" type="button" data-close>Got it</button></div>`);
+}
+
+function start(data) {
+  S = data && data.answer ? data : (store("letterlock-game") || freshState());
+  buildKeyboard();
+  render();
+  if (!store("letterlock-seen-help")) { store("letterlock-seen-help", true); showHelp(); }
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("button, .sheet-wrap");
+  if (!t) return;
+  if (t.id === "sheetWrap") { if (e.target === t) closeSheet(); return; }
+  if (t.dataset.k) return type(t.dataset.k);
+  if (t.dataset.act) return type(t.dataset.act);
+  if (t.dataset.ch) return cycleMark(t.dataset.ch);
+  if (t.hasAttribute("data-close")) return closeSheet();
+  if (t.hasAttribute("data-new") || t.id === "newBtn") {
+    if (t.id === "newBtn" && S.status === "play" && S.guesses.length) { stats.played++; stats.streak = 0; store("letterlock-stats", stats); }
+    S = freshState(); closeSheet(); setMsg(""); render(); return;
+  }
+  if (t.id === "helpBtn") return showHelp();
+});
+
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "Escape") return closeSheet();
+  if (!$("sheetWrap").hidden) return;
+  if (e.key === "Enter") { e.preventDefault(); type("enter"); }
+  else if (e.key === "Backspace") type("back");
+  else if (/^[a-zA-Z]$/.test(e.key)) type(e.key.toLowerCase());
+});
+
+// Save progress so a reload keeps the current lock.
+setInterval(() => S && store("letterlock-game", S), 1000);
+window.addEventListener("pagehide", () => S && store("letterlock-game", S));
+window.claude?.hot?.snapshot?.(() => S);
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
