@@ -17,6 +17,8 @@
   --brass-ink: #ffffff;
   --out: #a3abb3;
   --bad: #b3261e;
+  --correct: #2e7d32; --present: #f2c037; --absent: #c62828;
+  --on-correct: #ffffff; --on-present: #1d2630; --on-absent: #ffffff;
   --display: "Bungee", "Impact", system-ui, sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -74,19 +76,19 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .lt {
   width: 2.1rem; height: 2.1rem; display: grid; place-items: center; border-radius: 5px;
   font: 700 1.05rem var(--mono); background: var(--plate); color: var(--fg); border: 1px solid transparent;
-  cursor: pointer; user-select: none; padding: 0; position: relative;
+  user-select: none; position: relative;
 }
-.lt.out { color: var(--out); background: transparent; border-color: var(--line); }
-.lt.out::after { content: ""; position: absolute; left: 18%; right: 18%; top: 50%; height: 2px; background: var(--out); transform: rotate(-20deg); }
-.lt.in { background: var(--brass-soft); border-color: var(--brass); color: var(--fg); }
+.correct { background: var(--correct); color: var(--on-correct); border-color: var(--correct); }
+.present { background: var(--present); color: var(--on-present); border-color: var(--present); }
+.absent { background: var(--absent); color: var(--on-absent); border-color: var(--absent); }
+/* The strike keeps red and green distinguishable without relying on colour alone. */
+.lt.absent::after { content: ""; position: absolute; left: 18%; right: 18%; top: 50%; height: 2px; background: var(--on-absent); opacity: .7; transform: rotate(-20deg); }
 .pins { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: .8rem; color: var(--muted); }
 .pin-group { display: flex; align-items: center; gap: 4px; }
 .pin { width: 12px; height: 12px; border-radius: 50%; }
 .pin.set { background: var(--brass); }
 .pin.loose { border: 2px solid var(--brass); }
 .pin.none { border: 1px dashed var(--line); }
-.row.win .lt { background: var(--brass); color: var(--brass-ink); border-color: var(--brass); }
-.row.win .lt::after { display: none; }
 
 /* Entry */
 .entry { display: flex; flex-direction: column; gap: 6px; align-items: center; }
@@ -109,8 +111,6 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
   background: var(--plate); color: var(--fg); font: 700 .95rem var(--mono); cursor: pointer; padding: 0; position: relative;
 }
 .key.wide { max-width: 4.4rem; flex-grow: 1.6; font: 600 .7rem var(--body); letter-spacing: .06em; text-transform: uppercase; }
-.key.out { color: var(--out); background: transparent; }
-.key.in { background: var(--brass-soft); border-color: var(--brass); }
 .kb-hint { text-align: center; font-size: .75rem; color: var(--muted); }
 
 /* Overlay panels */
@@ -154,7 +154,7 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
   </div>
   <div>
     <div class="kb" id="kb"></div>
-    <div class="kb-hint">Tap any letter in your past guesses to mark it out or in.</div>
+    <div class="kb-hint">Green: right spot. Yellow: wrong spot. Red: not in the word.</div>
   </div>
 </div>
 
@@ -180,7 +180,7 @@ let S;
 let stats = store("letterlock-stats") || { played: 0, opened: 0, streak: 0 };
 
 function freshState() {
-  return { answer: WORDS[Math.floor(Math.random() * WORDS.length)], guesses: [], current: "", marks: {}, status: "play" };
+  return { answer: WORDS[Math.floor(Math.random() * WORDS.length)], guesses: [], current: "", status: "play" };
 }
 
 // Score a guess: "set" = right letter, right slot; "loose" = in the word but another slot.
@@ -197,11 +197,43 @@ function score(guess, answer) {
   return { set, loose: common - set };
 }
 
-function cycleMark(ch) {
-  const m = S.marks[ch];
-  S.marks[ch] = m === undefined ? "out" : m === "out" ? "in" : undefined;
-  if (S.marks[ch] === undefined) delete S.marks[ch];
-  render();
+// Colour each letter of a guess. Exact matches claim their letters first, so a
+// repeated letter only shows as "present" while copies remain in the answer.
+function letterStates(guess, answer) {
+  const states = Array(LEN).fill("absent");
+  const remaining = {};
+  for (let i = 0; i < LEN; i++) {
+    if (guess[i] === answer[i]) states[i] = "correct";
+    else remaining[answer[i]] = (remaining[answer[i]] || 0) + 1;
+  }
+  for (let i = 0; i < LEN; i++) {
+    if (states[i] !== "correct" && remaining[guess[i]] > 0) {
+      states[i] = "present";
+      remaining[guess[i]]--;
+    }
+  }
+  return states;
+}
+
+// The best colour each letter has earned so far, for the keyboard.
+function keyStates() {
+  const rank = { absent: 1, present: 2, correct: 3 };
+  const keys = {};
+  for (const g of S.guesses) {
+    letterStates(g.word, S.answer).forEach((state, i) => {
+      const ch = g.word[i];
+      if (!keys[ch] || rank[state] > rank[keys[ch]]) keys[ch] = state;
+    });
+  }
+  return keys;
+}
+
+function tilesHTML(word) {
+  const labels = { correct: "right spot", present: "wrong spot", absent: "not in the word" };
+  return letterStates(word, S.answer).map((state, i) => {
+    const ch = word[i].toUpperCase();
+    return `<span class="lt ${state}" role="img" aria-label="${ch}, ${labels[state]}">${ch}</span>`;
+  }).join("");
 }
 
 function setMsg(text, err) {
@@ -256,13 +288,12 @@ function pinsHTML(g) {
 function render() {
   const log = $("log");
   if (!S.guesses.length) {
-    log.innerHTML = `<p class="log-empty">A five-letter word is locked away. Each guess tells you <b>how many</b> letters landed, but never which ones. Type a word to begin.</p>`;
+    log.innerHTML = `<p class="log-empty">A five-letter word is locked away. Each guess colours its letters to show which ones landed. Type a word to begin.</p>`;
   } else {
     log.innerHTML = S.guesses.map((g, i) => `
       <div class="row${g.set === LEN ? " win" : ""}">
         <span class="n">${i + 1}</span>
-        <span class="letters">${[...g.word].map(ch =>
-          `<button type="button" class="lt ${S.marks[ch] || ""}" data-ch="${ch}" aria-label="${ch.toUpperCase()}${S.marks[ch] ? ", marked " + S.marks[ch] : ""}">${ch.toUpperCase()}</button>`).join("")}</span>
+        <span class="letters">${tilesHTML(g.word)}</span>
         <span class="pins">${pinsHTML(g)}</span>
       </div>`).join("");
   }
@@ -270,10 +301,9 @@ function render() {
     const ch = S.current[i] || "";
     return `<div class="tm${ch ? " filled" : ""}">${ch.toUpperCase()}</div>`;
   }).join("");
+  const keys = keyStates();
   document.querySelectorAll(".key[data-k]").forEach(b => {
-    const k = b.dataset.k;
-    b.classList.toggle("out", S.marks[k] === "out");
-    b.classList.toggle("in", S.marks[k] === "in");
+    for (const state of ["correct", "present", "absent"]) b.classList.toggle(state, keys[b.dataset.k] === state);
   });
   $("left").textContent = TRIES - S.guesses.length;
   $("streak").textContent = stats.streak;
@@ -308,14 +338,15 @@ function showEnd() {
 function showHelp() {
   openSheet(`
     <h2>How to play</h2>
-    <p>Find the hidden five-letter word in ${TRIES} tries. After each guess you get two counts, and you have to work out which letters they refer to.</p>
+    <p>Find the hidden five-letter word in ${TRIES} tries. After each guess, every letter changes colour to show how close it was.</p>
     <div class="legend">
-      <span class="pin-group"><i class="pin set"></i></span><span><b>Set pin</b>: a letter in the right slot.</span>
-      <span class="pin-group"><i class="pin loose"></i></span><span><b>Loose pin</b>: a letter in the word, but in a different slot.</span>
-      <span class="pin-group"><i class="pin none"></i></span><span>No pins: none of these letters are in the word.</span>
+      <span class="lt correct">A</span><span><b>Green</b>: the letter is in the right spot.</span>
+      <span class="lt present">A</span><span><b>Yellow</b>: the letter is in the word, but in a different spot.</span>
+      <span class="lt absent">A</span><span><b>Red</b>: the letter is not in the word.</span>
     </div>
+    <p>The pins next to each guess count the same result: a solid pin for each green letter and a hollow pin for each yellow one.</p>
     <p>Repeated letters only count as often as they appear in the hidden word.</p>
-    <p>Tap a letter in your guess history to mark it: once to rule it <b>out</b>, twice to mark it <b>in</b>, three times to clear. The keyboard shows your marks.</p>
+    <p>The keyboard shows the best colour each letter has earned so far.</p>
     <div class="actions"><button class="btn primary" type="button" data-close>Got it</button></div>`);
 }
 
@@ -332,7 +363,6 @@ document.addEventListener("click", e => {
   if (t.id === "sheetWrap") { if (e.target === t) closeSheet(); return; }
   if (t.dataset.k) return type(t.dataset.k);
   if (t.dataset.act) return type(t.dataset.act);
-  if (t.dataset.ch) return cycleMark(t.dataset.ch);
   if (t.hasAttribute("data-close")) return closeSheet();
   if (t.hasAttribute("data-new") || t.id === "newBtn") {
     if (t.id === "newBtn" && S.status === "play" && S.guesses.length) { stats.played++; stats.streak = 0; store("letterlock-stats", stats); }
